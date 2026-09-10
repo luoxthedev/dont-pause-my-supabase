@@ -1,0 +1,42 @@
+name: Keep Supabase Alive
+
+# Se déclenche tous les 5 jours (approximatif, cf. README pour les limites
+# du système de cron de GitHub Actions) + possibilité de le lancer à la main.
+on:
+  schedule:
+    - cron: '0 12 */5 * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the Supabase REST endpoint
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Les secrets SUPABASE_URL et/ou SUPABASE_ANON_KEY ne sont pas configurés."
+            exit 1
+          fi
+
+          echo "Ping de $SUPABASE_URL ..."
+
+          HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/")
+
+          echo "Code HTTP reçu : $HTTP_CODE"
+          cat /tmp/response.txt
+
+          # PostgREST répond normalement 200 (OpenAPI) ou 401/404 selon la
+          # configuration, mais dans tous les cas la requête a bien réveillé
+          # le projet. On échoue seulement sur les erreurs réseau (curl vide).
+          if [ -z "$HTTP_CODE" ] || [ "$HTTP_CODE" = "000" ]; then
+            echo "::error::Impossible de joindre le projet Supabase."
+            exit 1
+          fi
+
+          echo "Projet Supabase réveillé avec succès."
